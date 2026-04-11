@@ -46,7 +46,7 @@ def refine(cfg: LakehouseConfig) -> RefineStats:
         select customer_id, name, upper(trim(segment)) as segment,
                coalesce(city, 'UNKNOWN') as city, updated_at
         from ranked where rn = 1
-    """).arrow()
+    """).to_arrow_table()
     con.register("silver_customers", customers)
 
     products = con.execute("""
@@ -55,7 +55,7 @@ def refine(cfg: LakehouseConfig) -> RefineStats:
                 partition by product_id order by _ingested_at desc) as rn
             from bronze_products)
         select product_id, name, category, unit_price from ranked where rn = 1
-    """).arrow()
+    """).to_arrow_table()
     con.register("silver_products", products)
 
     orders = con.execute("""
@@ -67,7 +67,7 @@ def refine(cfg: LakehouseConfig) -> RefineStats:
         from ranked
         where rn = 1 and status is not null
           and customer_id in (select customer_id from silver_customers)
-    """).arrow()
+    """).to_arrow_table()
     con.register("silver_orders", orders)
 
     order_items = con.execute("""
@@ -80,7 +80,7 @@ def refine(cfg: LakehouseConfig) -> RefineStats:
         where rn = 1 and quantity > 0
           and order_id in (select order_id from silver_orders)
           and product_id in (select product_id from silver_products)
-    """).arrow()
+    """).to_arrow_table()
 
     outputs = {"customers": customers, "products": products,
                "orders": orders, "order_items": order_items}
