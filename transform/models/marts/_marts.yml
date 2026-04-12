@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: dim_customer
+    description: SCD2 customer dimension (one row per version).
+    columns:
+      - name: customer_sk
+        tests: [not_null, unique]
+      - name: customer_id
+        tests: [not_null]
+  - name: dim_product
+    columns:
+      - name: product_sk
+        tests: [not_null, unique]
+  - name: dim_date
+    columns:
+      - name: date_day
+        tests: [not_null, unique]
+  - name: fact_sales
+    description: Sales at order-line grain, SCD2-resolved customer.
+    columns:
+      - name: order_item_id
+        tests: [not_null, unique]
+      - name: customer_sk
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_sk
+      - name: product_sk
+        tests:
+          - relationships:
+              to: ref('dim_product')
+              field: product_sk
+      - name: amount
+        tests: [not_null]
+      - name: status
+        tests:
+          - accepted_values:
+              values: ["NEW", "PAID", "SHIPPED", "CANCELLED", "REFUNDED"]
