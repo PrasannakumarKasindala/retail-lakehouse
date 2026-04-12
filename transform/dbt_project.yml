@@ -1,0 +1,23 @@
+name: retail_lakehouse
+version: "0.1.0"
+config-version: 2
+profile: retail_lakehouse
+
+model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  retail_lakehouse:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
+
+vars:
+  serving_dir: "warehouse/serving"
