@@ -23,4 +23,4 @@ from items i
 left join cust c
     on  c.customer_id = i.customer_id
     and i.order_ts >= c.valid_from
-    and i.order_ts <  c.valid_to
+    and i.order_ts <  coalesce(c.valid_to, timestamp '9999-12-31')
