@@ -87,7 +87,9 @@ def _customers_extract(world, day, r):
         seg = cust["segment"]
         messy_seg = SEG_MESSY[seg][next(r) % 3]                  # mixed case / spaces
         city = None if next(r) % 100 < 5 else cust["city"]       # ~5% null city
-        updated = cust["updated_at"] or f"{day} 00:00:00"
+        # Keep the row's own updated_at: unchanged customers must NOT look
+        # changed each day, or the SCD2 snapshot would open a spurious version.
+        updated = cust["updated_at"]
         rows.append({**cust, "segment": messy_seg, "city": city, "updated_at": updated})
         if next(r) % 100 < 2:                                    # ~2% duplicate row
             rows.append({**cust, "segment": messy_seg, "city": city, "updated_at": updated})
@@ -153,6 +155,9 @@ def generate(cfg: LakehouseConfig, days: int = 2, customers: int = 500,
     world = _World(customers, products, seed)
     r = world.rng
     dates = [f"2026-03-{2 + d:02d}" for d in range(days)]
+    baseline = f"{dates[0]} 00:00:00"
+    for cust in world.customers.values():
+        cust["updated_at"] = baseline           # meaningful business timestamp, day 1
     for i, day in enumerate(dates):
         if i > 0:
             world.evolve(day, change_rate, new_per_day)
