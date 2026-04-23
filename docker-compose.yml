@@ -1,0 +1,63 @@
+# Local Airflow stack for running the retail_lakehouse_daily DAG end to end on a
+# workstation. Postgres holds Airflow metadata; the scheduler and webserver share
+# the image. The repo is mounted so the DAG can import the rlh package and invoke
+# dbt. This is for local orchestration and demos, not a production deployment.
+#
+#   docker compose up airflow-init      # one-time metadata DB + admin user
+#   docker compose up                   # webserver on http://localhost:8080
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.3-python3.11
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    RLH_LAKE_ROOT: /opt/lake
+    RLH_DBT_PROJECT_DIR: /opt/retail-lakehouse/transform
+    PYTHONPATH: /opt/retail-lakehouse/src
+    _PIP_ADDITIONAL_REQUIREMENTS: "deltalake>=1.6 dbt-duckdb>=1.9 great_expectations>=1.0 duckdb pandas pyarrow"
+  volumes:
+    - ./:/opt/retail-lakehouse
+    - ./dags:/opt/airflow/dags
+    - lake:/opt/lake
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - airflow db migrate && airflow users create --username admin --password admin
+        --firstname admin --lastname admin --role Admin --email admin@example.com
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+
+volumes:
+  pgdata:
+  lake:
