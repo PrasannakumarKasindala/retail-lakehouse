@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest --cov=rlh --cov-report=term-missing
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: full pipeline reconciles to parity (exit 0)
+        run: rlh run --root /tmp/lake --days 2 --customers 200 --orders-per-day 400
+      - name: injected data-quality break fails the run (exit 1)
+        run: |
+          python - <<'PY'
+          import sys
+          import pyarrow as pa, pyarrow.parquet as pq
+          from rlh.config import LakehouseConfig
+          from rlh.expectations import validate_silver
+          cfg = LakehouseConfig.create("/tmp/lake")
+          t = pq.read_table(cfg.serving_path("customers"))
+          row = {k: v[0] for k, v in t.slice(0, 1).to_pydict().items()}
+          row["segment"] = "BOGUS"
+          pq.write_table(pa.Table.from_pylist(t.to_pylist() + [row], schema=t.schema),
+                         cfg.serving_path("customers"))
+          sys.exit(0 if not validate_silver(cfg).ok else 1)
+          PY
+
+  terraform:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # informational until wired to a backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: fmt
+        run: terraform -chdir=deploy/terraform fmt -check
+      - name: validate
+        run: |
+          terraform -chdir=deploy/terraform init -backend=false
+          terraform -chdir=deploy/terraform validate
